@@ -80,6 +80,7 @@ class PhotoAlbumViewController: UIViewController {
     }
 
     func loadPhotos(latitude: Double, longitude: Double) {
+        actionButton.isEnabled = false
         FlickrClient.sharedInstance().retrievePhotosByLocation(latitude: latitude, longitude: longitude, completionHandlerForPhotosByLocation: { (results, errorString) in
             performUIUpdatesOnMain {
                 if let results = results as? [String: AnyObject] {
@@ -88,7 +89,7 @@ class PhotoAlbumViewController: UIViewController {
                             if (photosArray.count > 0) {
                                 self.photosForPin = photosArray
                                 self.PhotoAlbum.reloadData()
-                                for photoItem in photosArray {
+                                for (index, photoItem) in photosArray.enumerated() {
                                     if let photoURL = photoItem[FlickrClient.Constants.FlickrResponseKeys.MediumURL] as? String {
                                         FlickrClient.sharedInstance().downloadImage(photoURL) { (data, errorString) in
                                             if let data = data {
@@ -97,6 +98,11 @@ class PhotoAlbumViewController: UIViewController {
                                                 photo.pin = self.selectedPin
                                                 photo.rawData = data
                                                 try? self.dataController.viewContext.save()
+                                                if index == (photosArray.count - 1) {
+                                                    performUIUpdatesOnMain {
+                                                        self.actionButton.isEnabled = true
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -125,15 +131,17 @@ class PhotoAlbumViewController: UIViewController {
     }
     
     @IBAction func buttonTapped(_ sender: Any) {
-        actionButton.isEnabled = false
         if selectedPhotos.count > 0 {
+            actionButton.isEnabled = false
             for photo in selectedPhotos {
                 dataController.viewContext.delete(photo)
             }
             try? dataController.viewContext.save()
             selectedPhotos = [Photo]()
+            actionButton.isEnabled = true
         } else {
             if let photos = fetchedResultsController.fetchedObjects {
+                actionButton.isEnabled = false
                 for photo in photos {
                     dataController.viewContext.delete(photo)
                 }
@@ -163,17 +171,38 @@ extension PhotoAlbumViewController: NSFetchedResultsControllerDelegate {
             
             for change in self.sectionChanges {
                 switch change.type {
-                case .insert: self.PhotoAlbum.insertSections([change.sectionIndex])
-                case .delete: self.PhotoAlbum.deleteSections([change.sectionIndex])
-                default: break
+                case .insert:
+                    self.PhotoAlbum.insertSections([change.sectionIndex])
+                    break
+                case .delete:
+                    self.PhotoAlbum.deleteSections([change.sectionIndex])
+                    break
+                default:
+                    break
                 }
             }
             
             for change in self.itemChanges {
                 switch change.type {
-                case .insert: self.PhotoAlbum.reloadItems(at: [change.newIndexPath!])
-                case .delete: self.PhotoAlbum.deleteItems(at: [change.indexPath!])
-                case .update: self.PhotoAlbum.reloadItems(at: [change.indexPath!])
+                case .insert:
+                    self.PhotoAlbum.reloadItems(at: [change.newIndexPath!])
+                    break
+                case .delete:
+                    if let cell = self.PhotoAlbum.cellForItem(at: change.indexPath!) {
+                        cell.layer.borderWidth = 0.0
+                        cell.layer.borderColor = UIColor.white.cgColor
+                        
+                        for cellCoverview in cell.contentView.subviews {
+                            if cellCoverview.tag == (change.indexPath!.row + 100) {
+                                cellCoverview.removeFromSuperview()
+                            }
+                        }
+                    }
+                    self.PhotoAlbum.deleteItems(at: [change.indexPath!])
+                    break
+                case .update:
+                    self.PhotoAlbum.reloadItems(at: [change.indexPath!])
+                    break
                 case .move:
                     self.PhotoAlbum.deleteItems(at: [change.indexPath!])
                     self.PhotoAlbum.insertItems(at: [change.newIndexPath!])
@@ -245,7 +274,7 @@ extension PhotoAlbumViewController: UICollectionViewDelegate, UICollectionViewDe
             let cellRect = cell.bounds
             let cellCoverView = UIView(frame: cellRect)
             cellCoverView.backgroundColor = UIColor.black.withAlphaComponent(0.6)
-            cellCoverView.tag = indexPath.row
+            cellCoverView.tag = indexPath.row + 100
             cell.contentView.addSubview(cellCoverView)
         }
         
@@ -263,7 +292,7 @@ extension PhotoAlbumViewController: UICollectionViewDelegate, UICollectionViewDe
             cell.layer.borderColor = UIColor.white.cgColor
             
             for cellCoverview in cell.contentView.subviews {
-                if cellCoverview.tag == indexPath.row {
+                if cellCoverview.tag == (indexPath.row + 100) {
                     cellCoverview.removeFromSuperview()
                 }
             }
